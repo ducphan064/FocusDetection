@@ -27,7 +27,7 @@ def calibrate_neutral(cap, face, seconds=2.0, stframe=None):
             lms = res.multi_face_landmarks[0].landmark
             leye = get_eye_points(lms, LEFT_EYE, w, h)
             reye = get_eye_points(lms, RIGHT_EYE, w, h)
-            ear = 0.5*(eye_aspect_ratio(leye)+eye_aspect_ratio(reye)) if len(leye)==6 and len(reye)==6 else None
+            ear = 0.5*(eye_aspect_ratio(leye)[-1]+eye_aspect_ratio(reye)[-1]) if len(leye)==6 and len(reye)==6 else None
 
             yaw, pitch = solve_head_pose(lms, w, h)
             if yaw is not None:
@@ -54,8 +54,44 @@ def calibrate_neutral(cap, face, seconds=2.0, stframe=None):
 def main():
     print("[DEBUG] Python:", sys.version)
     print("[DEBUG] OpenCV:", cv2.__version__)
-    st.title("Focus Monitor - Streamlit Version")
-    stframe = st.empty()       # placeholder for video
+    st.set_page_config(
+        page_title="Focus Monitor",
+        layout="wide",  # mở rộng toàn màn hình
+        initial_sidebar_state="collapsed"
+    )    # Create 3 main columns: LEFT | MAIN | RIGHT
+    col_main, col_right = st.columns([2, 2])
+
+    # ---- LEFT SIDE (2 rows) ----
+    # with col_left:
+    #     #Main cong thuc weighted sum
+    #     focus_box = st.empty()
+    #     focus_box_equation = st.empty()
+    #     # left_bottom = st.empty()
+    #     # left_bottom_equation = st.empty()
+
+    # ---- MAIN SCREEN (big video frame) ----
+    with col_main:
+        stframe = st.empty()
+
+    # ---- RIGHT SIDE (2 rows) ----
+    with col_right:
+        # Hàng trên: 2 screen mắt
+        row1 = st.columns(2)
+        left_eye_box = row1[0].empty()
+        left_eye_eq = row1[0].empty()
+        right_eye_box = row1[1].empty()
+        right_eye_eq = row1[1].empty()
+        row1_1 = st.columns([1, 2, 1])  # middle column bigger
+        with row1_1[1]:
+            ear_final = st.empty()
+
+        # Hàng dưới: 1 screen head
+        row2 = st.columns(2)
+        head_box = row2[0].empty()
+        pnp_eq = row2[0].empty()
+        mouth_box = row2[1].empty()
+        mar_eq = row2[1].empty()
+
     status_box = st.empty()    # status text
     # st_calibration = st.empty()
     cap = open_camera()
@@ -68,15 +104,15 @@ def main():
     #         print("[FATAL] No camera. Check macOS Camera permissions.")
     #         return
 
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 960)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
     mp_face = mp.solutions.face_mesh
     fsm = FocusFSM(th_on=0.75, th_off=0.5, dwell_on=1.2, dwell_off=0.8)
     flt = FeatureSmoother(alpha=0.75)
 
     # === Panel & Hotkeys state ===
-    sens = {"th_on": fsm.th_on, "dwell_on": fsm.dwell_on}
+    # sens = {"th_on": fsm.th_on, "dwell_on": fsm.dwell_on}
     
     mp_drawing = mp.solutions.drawing_utils
     mp_styles   = mp.solutions.drawing_styles
@@ -145,7 +181,10 @@ def main():
                 # EAR
                 leye = get_eye_points(lms, LEFT_EYE, w, h)
                 reye = get_eye_points(lms, RIGHT_EYE, w, h)
-                ear_val = 0.5*(eye_aspect_ratio(leye)+eye_aspect_ratio(reye)) if len(leye)==6 and len(reye)==6 else None
+
+                d26_r, d35_r, d14_r, ear_right = eye_aspect_ratio(reye) if len(leye)==6 and len(reye)==6 else None
+                d26_l, d35_l, d14_l, ear_left = eye_aspect_ratio(leye) if len(leye)==6 and len(reye)==6 else None
+                ear_val = 0.5*(ear_left+ear_right) if len(leye)==6 and len(reye)==6 else None
 
                 # Head pose + gaze
                 yaw, pitch = solve_head_pose(lms, w, h)
@@ -155,7 +194,7 @@ def main():
 ######################## BỔ SUNG 3/11/25
 
                 # === MAR (mouth) & yawn
-                mar_val = mouth_aspect_ratio(lms, w, h)
+                d_v1, d_v2, d_v3, horizontal, mar_val = mouth_aspect_ratio(lms, w, h)
                 yinfo = yawn.update(mar_val, tnow=time.time())
 
                 # UI: hiển thị MAR/baseline/ratio & trạng thái
@@ -178,7 +217,106 @@ def main():
 ###################################
                 # Smoothing
                 yaw_s, pitch_s, ear_s, gaze_s = flt.update(yaw, pitch, ear_val, gaze_off)
-
+                left_eye_crop = crop_region(frame, lms, LEFT_EYE)
+                right_eye_crop = crop_region(frame, lms, RIGHT_EYE)
+                face_crop = crop_region(frame, lms, FACE_OVAL)
+                mouth_crop = crop_region(frame, lms, MOUTH)
+                print('Eye crop shape:', left_eye_crop.shape)
+                print('face crop shape:', face_crop.shape)
+                print('mouth crop shape:', mouth_crop.shape)
+                if right_eye_crop is not None and right_eye_crop.size != 0:
+                    right_eye_crop = cv2.resize(right_eye_crop, EYE_DISPLAY)
+                    right_eye_box.image(right_eye_crop, channels="BGR", caption="Right Eye")
+                    right_eye_eq.latex(fr"""
+                                        \mathrm{{Right EAR}} =
+                                        \frac{{
+                                        \lVert P_2 - P_6 \rVert
+                                        + \lVert P_3 - P_5 \rVert
+                                        }}{{
+                                        2 \cdot \lVert P_1 - P_4 \rVert
+                                        }}\\
+                                        =
+                                        \frac{{
+                                        {d26_r:.3f}
+                                        +
+                                        {d35_r:.3f}
+                                        }}{{
+                                        2 \cdot {d14_r:.3f}
+                                        }}
+                                        = \mathrm{ear_right}
+                                        """)
+                else:
+                    right_eye_eq.write("Right eye out of frame")
+                if left_eye_crop is not None and left_eye_crop.size != 0:
+                    left_eye_crop = cv2.resize(left_eye_crop, EYE_DISPLAY)
+                    left_eye_box.image(left_eye_crop, channels="BGR", caption="Left Eye")
+                    left_eye_eq.latex(fr"""
+                                        \mathrm{{Left EAR}} =
+                                        \frac{{
+                                        \lVert P_2 - P_6 \rVert
+                                        + \lVert P_3 - P_5 \rVert
+                                        }}{{
+                                        2 \cdot \lVert P_1 - P_4 \rVert
+                                        }}\\
+                                        =
+                                        \frac{{
+                                        {d26_l:.3f}
+                                        +
+                                        {d35_l:.3f}
+                                        }}{{
+                                        2 \cdot {d14_l:.3f}
+                                        }}
+                                        = \mathrm{ear_left}
+                                        """)
+                else:
+                    left_eye_box.write("Left eye out of frame")
+                if (left_eye_crop is not None and right_eye_crop is not None):
+                    ear_final.latex(fr"""
+                                        \mathrm{{EAR}} =
+                                        \frac{{
+                                        Right EAR
+                                        + Left EAR
+                                        }}{{
+                                        2
+                                        }}\\
+                                        =
+                                        \frac{{
+                                        {ear_left:.3f}
+                                        +
+                                        {ear_right:.3f}
+                                        }}{{
+                                        2
+                                        }}
+                                        = \mathrm{ear_val}
+                                        """)
+                if face_crop is not None and face_crop.size != 0:
+                    face_crop = cv2.resize(face_crop, EYE_DISPLAY)
+                    head_box.image(face_crop, channels="BGR", caption="Face")
+                    pnp_eq.write('Equation')
+                else:
+                    head_box.write("Face out of frame")
+                if mouth_crop is not None and mouth_crop.size != 0:
+                    mouth_crop = cv2.resize(mouth_crop, EYE_DISPLAY)
+                    mouth_box.image(mouth_crop, channels="BGR", caption="Mouth")
+                    mar_eq.latex(fr"""
+                                \mathrm{{MAR}} = 
+                                \frac{{
+                                \lVert P_2 - P_8 \rVert 
+                                + \lVert P_3 - P_7 \rVert 
+                                + \lVert P_4 - P_6 \rVert
+                                }}{{
+                                3 \cdot \lVert P_1 - P_5 \rVert
+                                }}
+                                \\
+                                = \frac{{
+                                {d_v1:.3f}
+                                + {d_v2:.3f}
+                                + {d_v3:.3f}
+                                }}{{
+                                3 {horizontal:.3f} }} = \mathrm{mar_val:.3f}
+                                """)
+                else:
+                    mouth_box.write("Mouth out of frame")
                 # Score + FSM
                 score = compute_score(yaw_s, pitch_s, ear_s, gaze_s, yaw0, pitch0, ear0)
                 state_before = fsm.state
@@ -243,7 +381,7 @@ def main():
             stframe.image(
                             frame,
                             channels="BGR",
-                            use_container_width=True
+                            use_container_width=False
                         )
 
                         # OPTIONAL: show debug state

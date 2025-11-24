@@ -3,10 +3,20 @@ import numpy as np
 import cv2
 import mediapipe as mp
 import platform
-# 1) LANDMARK & HẰNG SỐ
 
+# 1) LANDMARK & HẰNG SỐ
 LEFT_EYE  = [33,160,158,133,153,144]
 RIGHT_EYE = [263,387,385,362,380,373]
+
+EYE_DISPLAY = (720, 360)
+MOUTH_DISPLAY = (600, 100)
+HEAD_DISPLAY = (360, 215)
+
+FACE_OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454,
+             323, 361, 288, 397, 365, 379, 378, 400,
+             377, 152, 148, 176, 149, 150, 136, 172,
+             58, 132, 93, 234, 127, 162, 21, 54,
+             103, 67, 109]
 
 LEFT_EYE_CORNERS  = (33, 133)
 RIGHT_EYE_CORNERS = (362, 263)
@@ -19,12 +29,22 @@ RIGHT_IRIS = [473, 474, 475, 476, 477]
 
 
 # === MOUTH landmarks (FaceMesh)
+MOUTH = [61, 291, 13, 14, 312, 317, 82, 87]
 MOUTH_LEFT   = 61    # khoé trái (outer)
 MOUTH_RIGHT  = 291   # khoé phải (outer)
-MOUTH_TOP    = 13    # môi trên giữa (inner)
-MOUTH_BOTTOM = 14    # môi dưới giữa (inner)
+# MOUTH_TOP    = 13    # môi trên giữa (inner)
+# MOUTH_BOTTOM = 14    # môi dưới giữa (inner)
+# Cặp 1: Trung tâm (Central Vertical Pair)
+MOUTH_TOP_CEN    = 13    # môi trên giữa (inner)
+MOUTH_BOTTOM_CEN = 14    # môi dưới giữa (inner)
 
+# Cặp 2: Phụ bên Phải (Right Auxiliary Pair)
+MOUTH_TOP_R      = 312   # môi trên phải (gần P_right)
+MOUTH_BOTTOM_R   = 317   # môi dưới phải
 
+# Cặp 3: Phụ bên Trái (Left Auxiliary Pair)
+MOUTH_TOP_L      = 82    # môi trên trái (gần P_left)
+MOUTH_BOTTOM_L   = 87    # môi dưới trái
 
 ### Vector đặc trưng khuôn mặc 3D "chuẩn" theo cộng đồng MediaPipe cung cấp
 MODEL_PTS = np.array([
@@ -42,7 +62,11 @@ def dist2d(a, b):
 
 def eye_aspect_ratio(pts):  # pts: [(x,y)] * 6
     def d(i, j): return dist2d(pts[i], pts[j])
-    return (d(1,5) + d(2,4)) / (2.0*d(0,3) + 1e-8)
+    final = (d(1,5) + d(2,4)) / (2.0*d(0,3) + 1e-8)
+    d26 = d(1,5)
+    d35 = d(2,4)
+    d14 = d(0,3)
+    return d26, d35, d14, final
 
 def iris_center(landmarks, idxs, w, h):
     xs, ys = [], []
@@ -83,7 +107,9 @@ def compute_gaze_offset(landmarks, w, h):
     if offL == 0.0 and offR == 0.0: return 0.0
     if offL == 0.0: return offR
     if offR == 0.0: return offL
-    return 0.5*(offL + offR)
+
+    final_offset = 0.5*(offL + offR)
+    return
 
 def solve_head_pose(landmarks, w, h):
     pts2d = np.array([
@@ -109,16 +135,35 @@ def solve_head_pose(landmarks, w, h):
 def get_eye_points(landmarks, idxs, w, h):
     return [(landmarks[i].x*w, landmarks[i].y*h) for i in idxs]
 
-def mouth_aspect_ratio(landmarks, w, h):
-    """MAR = (khoảng mở dọc môi) / (chiều ngang miệng)"""
-    lx, ly = landmarks[MOUTH_LEFT].x*w,  landmarks[MOUTH_LEFT].y*h
-    rx, ry = landmarks[MOUTH_RIGHT].x*w, landmarks[MOUTH_RIGHT].y*h
-    tx, ty = landmarks[MOUTH_TOP].x*w,   landmarks[MOUTH_TOP].y*h
-    bx, by = landmarks[MOUTH_BOTTOM].x*w,landmarks[MOUTH_BOTTOM].y*h
 
+def mouth_aspect_ratio(landmarks, w, h):
+    # 1. Tọa độ bề ngang môi (Mẫu số)
+    lx, ly = landmarks[MOUTH_LEFT].x * w, landmarks[MOUTH_LEFT].y * h
+    rx, ry = landmarks[MOUTH_RIGHT].x * w, landmarks[MOUTH_RIGHT].y * h
     horizontal = math.hypot(rx - lx, ry - ly) + 1e-6
-    vertical   = math.hypot(bx - tx, by - ty)
-    return vertical / horizontal
+
+    # 2. Tọa độ bề dọc (Tử số)
+
+    # a) Cặp 1: Trung tâm
+    t1x, t1y = landmarks[MOUTH_TOP_CEN].x * w, landmarks[MOUTH_TOP_CEN].y * h
+    b1x, b1y = landmarks[MOUTH_BOTTOM_CEN].x * w, landmarks[MOUTH_BOTTOM_CEN].y * h
+    d_v1 = math.hypot(b1x - t1x, b1y - t1y)
+
+    # b) Cặp 2: Bên Phải
+    t2x, t2y = landmarks[MOUTH_TOP_R].x * w, landmarks[MOUTH_TOP_R].y * h
+    b2x, b2y = landmarks[MOUTH_BOTTOM_R].x * w, landmarks[MOUTH_BOTTOM_R].y * h
+    d_v2 = math.hypot(b2x - t2x, b2y - t2y)
+
+    # c) Cặp 3: Bên Trái
+    t3x, t3y = landmarks[MOUTH_TOP_L].x * w, landmarks[MOUTH_TOP_L].y * h
+    b3x, b3y = landmarks[MOUTH_BOTTOM_L].x * w, landmarks[MOUTH_BOTTOM_L].y * h
+    d_v3 = math.hypot(b3x - t3x, b3y - t3y)
+
+    # Trung bình cộng 3 khoảng cách dọc
+    vertical_avg = (d_v1 + d_v2 + d_v3) / 3.0
+
+    mar = vertical_avg / horizontal
+    return d_v1, d_v2, d_v3, horizontal, mar
 
 
 # 3) SMOOTHING & FSM
@@ -166,6 +211,19 @@ class FocusFSM:
             return self.state, 1.0
         return self.state, min(1.0, elapsed/need)
 
+def crop_region(frame, lms, indices, padding=10):
+    h, w = frame.shape[:2]
+    pts = [(int(lms[i].x*w), int(lms[i].y*h)) for i in indices]
+
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+
+    x1 = max(0, min(xs) - padding)
+    y1 = max(0, min(ys) - padding)
+    x2 = min(w, max(xs) + padding)
+    y2 = min(h, max(ys) + padding)
+
+    return frame[y1:y2, x1:x2]
 
 class YawnTracker:
     """
@@ -283,5 +341,5 @@ def digital_zoom(frame, zoom_factor=1.5):
     return cv2.resize(cropped, (w, h))
 
 def put_panel(img, sens,x=10, y=185):
-        txt = f"th_on={sens['th_on']:.2f} | dwell_on={sens['dwell_on']:.2f}   hotkeys: [ ]  - ="
-        cv2.putText(img, txt, (x,y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,0), 2)
+    txt = f"th_on={sens['th_on']:.2f} | dwell_on={sens['dwell_on']:.2f}   hotkeys: [ ]  - ="
+    cv2.putText(img, txt, (x,y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,0), 2)
