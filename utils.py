@@ -108,8 +108,9 @@ def compute_gaze_offset(landmarks, w, h):
     if offL == 0.0: return offR
     if offR == 0.0: return offL
 
+
     final_offset = 0.5*(offL + offR)
-    return
+    return (math.hypot(vL[0], vL[1]),wL), offL, (math.hypot(vR[0], vR[1]),wR), offR, final_offset 
 
 def solve_head_pose(landmarks, w, h):
     pts2d = np.array([
@@ -127,9 +128,10 @@ def solve_head_pose(landmarks, w, h):
     okp, rvec, _ = cv2.solvePnP(MODEL_PTS, pts2d, cam_mtx, dist, flags=cv2.SOLVEPNP_ITERATIVE)
     if not okp: return None, None
     R, _ = cv2.Rodrigues(rvec)
+    print('Shape of R:', R.shape)
     sy = math.sqrt(R[0,0]**2 + R[1,0]**2)
     pitch = math.degrees(math.atan2(-R[2,0], sy))
-    yaw   = math.degrees(math.atan2(R[1,0], R[0,0]))
+    yaw   = math.degrees(math.atan2(R[1,0], R[0,0]))#arctan2 cua cac diem trong ma tran xoay
     return yaw, pitch
 
 def get_eye_points(landmarks, idxs, w, h):

@@ -78,12 +78,14 @@ def main():
         # Hàng trên: 2 screen mắt
         row1 = st.columns(2)
         left_eye_box = row1[0].empty()
-        left_eye_eq = row1[0].empty()
+        left_eye_offset = row1[0].empty()
+        right_eye_offset = row1[0].empty()
         right_eye_box = row1[1].empty()
-        right_eye_eq = row1[1].empty()
-        row1_1 = st.columns([1, 2, 1])  # middle column bigger
-        with row1_1[1]:
-            ear_final = st.empty()
+        left_eye_ear = row1[1].empty()
+        right_eye_ear = row1[1].empty()
+        
+        offset_final = row1[0].empty()
+        ear_final = row1[1].empty()
 
         # Hàng dưới: 1 screen head
         row2 = st.columns(2)
@@ -188,7 +190,7 @@ def main():
 
                 # Head pose + gaze
                 yaw, pitch = solve_head_pose(lms, w, h)
-                gaze_off = compute_gaze_offset(lms, w, h)
+                L, offL, R, offR, gaze_off = compute_gaze_offset(lms, w, h)
                 print("Gaze offset", gaze_off)
 
 ######################## BỔ SUNG 3/11/25
@@ -227,7 +229,7 @@ def main():
                 if right_eye_crop is not None and right_eye_crop.size != 0:
                     right_eye_crop = cv2.resize(right_eye_crop, EYE_DISPLAY)
                     right_eye_box.image(right_eye_crop, channels="BGR", caption="Right Eye")
-                    right_eye_eq.latex(fr"""
+                    right_eye_ear.latex(fr"""
                                         \mathrm{{Right EAR}} =
                                         \frac{{
                                         \lVert P_2 - P_6 \rVert
@@ -243,14 +245,22 @@ def main():
                                         }}{{
                                         2 \cdot {d14_r:.3f}
                                         }}
-                                        = \mathrm{ear_right}
+                                        = \mathrm{ear_right:.3f}
                                         """)
+                    right_eye_offset.latex(fr"""
+                                            \mathrm{{Right\ Offset}} =
+                                            \frac{{\lVert v_R \rVert}}{{\lVert C_1^R - C_2^R \rVert}} \\
+                                            =
+                                            \frac{{{R[0]:.3f}}}{{{R[1]:.3f}}}
+                                            = {offR:.3f}
+                                            """)
+
                 else:
-                    right_eye_eq.write("Right eye out of frame")
+                    right_eye_ear.write("Right eye out of frame")
                 if left_eye_crop is not None and left_eye_crop.size != 0:
                     left_eye_crop = cv2.resize(left_eye_crop, EYE_DISPLAY)
                     left_eye_box.image(left_eye_crop, channels="BGR", caption="Left Eye")
-                    left_eye_eq.latex(fr"""
+                    left_eye_ear.latex(fr"""
                                         \mathrm{{Left EAR}} =
                                         \frac{{
                                         \lVert P_2 - P_6 \rVert
@@ -266,8 +276,16 @@ def main():
                                         }}{{
                                         2 \cdot {d14_l:.3f}
                                         }}
-                                        = \mathrm{ear_left}
+                                        = \mathrm{ear_left:.3f}
                                         """)
+                    left_eye_offset.latex(fr"""
+                                        \mathrm{{Left\ Offset}} =
+                                        \frac{{\lVert v_L \rVert}}{{\lVert C_1^L - C_2^L \rVert}} \\
+                                        =
+                                        \frac{{{L[0]:.3f}}}{{{L[1]:.3f}}}
+                                        = {offL:.3f}
+                                        """)
+
                 else:
                     left_eye_box.write("Left eye out of frame")
                 if (left_eye_crop is not None and right_eye_crop is not None):
@@ -287,7 +305,25 @@ def main():
                                         }}{{
                                         2
                                         }}
-                                        = \mathrm{ear_val}
+                                        = \mathrm{ear_val:.3f}
+                                        """)
+                    offset_final.latex(fr"""
+                                        \mathrm{{Offset}} =
+                                        \frac{{
+                                        Right Offset
+                                        + Left Offset
+                                        }}{{
+                                        2
+                                        }}\\
+                                        =
+                                        \frac{{
+                                        {offR:.3f}
+                                        +
+                                        {offL:.3f}
+                                        }}{{
+                                        2
+                                        }}
+                                        = \mathrm{ear_val:.3f}
                                         """)
                 if face_crop is not None and face_crop.size != 0:
                     face_crop = cv2.resize(face_crop, EYE_DISPLAY)
