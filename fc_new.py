@@ -29,7 +29,7 @@ def calibrate_neutral(cap, face, seconds=2.0, stframe=None):
             reye = get_eye_points(lms, RIGHT_EYE, w, h)
             ear = 0.5*(eye_aspect_ratio(leye)[-1]+eye_aspect_ratio(reye)[-1]) if len(leye)==6 and len(reye)==6 else None
 
-            yaw, pitch = solve_head_pose(lms, w, h)
+            yaw, pitch,_,_,_,_ = solve_head_pose(lms, w, h)
             if yaw is not None:
                 ys.append(yaw)
                 ps.append(pitch)
@@ -54,11 +54,16 @@ def calibrate_neutral(cap, face, seconds=2.0, stframe=None):
 def main():
     print("[DEBUG] Python:", sys.version)
     print("[DEBUG] OpenCV:", cv2.__version__)
+    st.markdown(
+            "<h1 style='text-align:center; color:white;'>Focus Monitor Dashboard</h1>",
+            unsafe_allow_html=True
+        )
+    
     st.set_page_config(
         page_title="Focus Monitor",
-        layout="wide",  # mở rộng toàn màn hình
+        layout="wide",
         initial_sidebar_state="collapsed"
-    )    # Create 3 main columns: LEFT | MAIN | RIGHT
+    )
     col_main, col_right = st.columns([2, 2])
 
     # ---- LEFT SIDE (2 rows) ----
@@ -70,8 +75,26 @@ def main():
     #     # left_bottom_equation = st.empty()
 
     # ---- MAIN SCREEN (big video frame) ----
+
+
     with col_main:
         stframe = st.empty()
+
+        # Nội dung chính canh giữa và chữ lớn
+
+
+        st.markdown(
+        "<div style='text-align:center; font-size:36px; font-weight:bold;'>Main monitor</div>",
+        unsafe_allow_html=True
+    )
+
+        # Status box với chữ lớn
+        status_box = st.empty()
+        status_box.markdown(
+            "<div style='text-align:center; font-size:28px; color:blue;'>Status: Ready</div>",
+            unsafe_allow_html=True
+        )
+
 
     # ---- RIGHT SIDE (2 rows) ----
     with col_right:
@@ -90,11 +113,12 @@ def main():
         # Hàng dưới: 1 screen head
         row2 = st.columns(2)
         head_box = row2[0].empty()
-        pnp_eq = row2[0].empty()
+        pitch_eq = row2[0].empty()
+        yaw_eq = row2[0].empty()
         mouth_box = row2[1].empty()
         mar_eq = row2[1].empty()
 
-    status_box = st.empty()    # status text
+   
     # st_calibration = st.empty()
     cap = open_camera()
 
@@ -188,40 +212,39 @@ def main():
                 d26_l, d35_l, d14_l, ear_left = eye_aspect_ratio(leye) if len(leye)==6 and len(reye)==6 else None
                 ear_val = 0.5*(ear_left+ear_right) if len(leye)==6 and len(reye)==6 else None
 
-                # Head pose + gaze
-                yaw, pitch = solve_head_pose(lms, w, h)
+                yaw, pitch, rvec, tvec, cam_mtx, dist = solve_head_pose(lms, w, h)
                 L, offL, R, offR, gaze_off = compute_gaze_offset(lms, w, h)
                 print("Gaze offset", gaze_off)
 
 ######################## BỔ SUNG 3/11/25
 
-                # === MAR (mouth) & yawn
+                # # === MAR (mouth) & yawn
                 d_v1, d_v2, d_v3, horizontal, mar_val = mouth_aspect_ratio(lms, w, h)
-                yinfo = yawn.update(mar_val, tnow=time.time())
+                # yinfo = yawn.update(mar_val, tnow=time.time())
 
-                # UI: hiển thị MAR/baseline/ratio & trạng thái
-                cv2.putText(frame, f"MAR={0.0 if mar_val is None else mar_val:.2f} "
-                                f"MAR0={0.0 if yinfo['baseline'] is None else yinfo['baseline']:.2f} "
-                                f"r={yinfo['ratio']:.2f}  YAWN={yinfo['state'].upper()}",
-                            (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,255,255), 1)
+                # # UI: hiển thị MAR/baseline/ratio & trạng thái
+                # cv2.putText(frame, f"MAR={0.0 if mar_val is None else mar_val:.2f} "
+                #                 f"MAR0={0.0 if yinfo['baseline'] is None else yinfo['baseline']:.2f} "
+                #                 f"r={yinfo['ratio']:.2f}  YAWN={yinfo['state'].upper()}",
+                #             (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,255,255), 1)
 
-                # Vòng tròn tiến trình dwell của YAWN
-                yc = (300, 150); yr = 18
-                cv2.circle(frame, yc, yr, (200,200,200), 2)
-                cv2.ellipse(frame, yc, (yr, yr), -90, 0, yinfo['progress']*360,
-                            (0,165,255), 3)  # cam
-                cv2.putText(frame, "yawn dwell", (yc[0]-45, yc[1]+40),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200,200,200), 1)
+                # # Vòng tròn tiến trình dwell của YAWN
+                # yc = (300, 150); yr = 18
+                # cv2.circle(frame, yc, yr, (200,200,200), 2)
+                # cv2.ellipse(frame, yc, (yr, yr), -90, 0, yinfo['progress']*360,
+                #             (0,165,255), 3)  # cam
+                # cv2.putText(frame, "yawn dwell", (yc[0]-45, yc[1]+40),
+                #             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200,200,200), 1)
 
-                # Border flash cam khi đang (hoặc sắp) YAWN
-                if yinfo['state'] == "yawn" or (yinfo['ratio'] >= yawn.r_on and yinfo['progress'] > 0):
-                    cv2.rectangle(frame, (4,4), (w-4, h-4), (0,165,255), 6)  # cam
+                # # Border flash cam khi đang (hoặc sắp) YAWN
+                # if yinfo['state'] == "yawn" or (yinfo['ratio'] >= yawn.r_on and yinfo['progress'] > 0):
+                #     cv2.rectangle(frame, (4,4), (w-4, h-4), (0,165,255), 6)  # cam
 ###################################
                 # Smoothing
                 yaw_s, pitch_s, ear_s, gaze_s = flt.update(yaw, pitch, ear_val, gaze_off)
                 left_eye_crop = crop_region(frame, lms, LEFT_EYE)
                 right_eye_crop = crop_region(frame, lms, RIGHT_EYE)
-                face_crop = crop_region(frame, lms, FACE_OVAL)
+                face_crop= crop_region(frame, lms, FACE_OVAL, padding=200)
                 mouth_crop = crop_region(frame, lms, MOUTH)
                 print('Eye crop shape:', left_eye_crop.shape)
                 print('face crop shape:', face_crop.shape)
@@ -249,7 +272,7 @@ def main():
                                         """)
                     right_eye_offset.latex(fr"""
                                             \mathrm{{Right\ Offset}} =
-                                            \frac{{\lVert v_R \rVert}}{{\lVert C_1^R - C_2^R \rVert}} \\
+                                            \frac{{\lVert v_R \rVert}}{{\lVert L_1 - L_2 \rVert}} \\
                                             =
                                             \frac{{{R[0]:.3f}}}{{{R[1]:.3f}}}
                                             = {offR:.3f}
@@ -280,7 +303,7 @@ def main():
                                         """)
                     left_eye_offset.latex(fr"""
                                         \mathrm{{Left\ Offset}} =
-                                        \frac{{\lVert v_L \rVert}}{{\lVert C_1^L - C_2^L \rVert}} \\
+                                        \frac{{\lVert v_L \rVert}}{{\lVert L_1 - L_2 \rVert}} \\
                                         =
                                         \frac{{{L[0]:.3f}}}{{{L[1]:.3f}}}
                                         = {offL:.3f}
@@ -326,9 +349,19 @@ def main():
                                         = \mathrm{ear_val:.3f}
                                         """)
                 if face_crop is not None and face_crop.size != 0:
-                    face_crop = cv2.resize(face_crop, EYE_DISPLAY)
                     head_box.image(face_crop, channels="BGR", caption="Face")
-                    pnp_eq.write('Equation')
+                    pitch_eq.latex(fr"""
+                                \mathrm{{pitch}} =
+                                \arctan2\!\left(-R_{{2,0}},\, \sqrt{{R_{{0,0}}^2 + R_{{1,0}}^2}}\right) \cdot \frac{{180}}{{\pi}}
+                                \\
+                                = {pitch:.3f}^\circ
+                                """)
+                    yaw_eq.latex(fr"""
+                                \mathrm{{yaw}} =
+                                \arctan2\!\left(R_{{1,0}},\, R_{{0,0}}\right) \cdot \frac{{180}}{{\pi}}
+                                \\
+                                = {yaw:.3f}^\circ
+                                """)
                 else:
                     head_box.write("Face out of frame")
                 if mouth_crop is not None and mouth_crop.size != 0:
@@ -359,34 +392,34 @@ def main():
                 state, progress = fsm.update(score)
 
                 # ===== UI: trạng thái, số liệu
-                cv2.putText(frame, f"STATE: {state.upper()}",
-                            (10,30), cv2.FONT_HERSHEY_SIMPLEX, 0.9,
-                            (0,255,0) if state=="focused" else (0,0,255), 2)
-                cv2.putText(frame, f"yaw={0.0 if yaw_s is None else yaw_s:.1f}  "
-                                   f"pitch={0.0 if pitch_s is None else pitch_s:.1f}  "
-                                   f"EAR={0.0 if ear_s is None else ear_s:.2f}  "
-                                   f"gaze_off={0.0 if gaze_s is None else gaze_s:.2f}",
-                            (10,60), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,255,255), 1)
+                # cv2.putText(frame, f"STATE: {state.upper()}",
+                #             (10,30), cv2.FONT_HERSHEY_SIMPLEX, 0.9,
+                #             (0,255,0) if state=="focused" else (0,0,255), 2)
+                # cv2.putText(frame, f"yaw={0.0 if yaw_s is None else yaw_s:.1f}  "
+                #                    f"pitch={0.0 if pitch_s is None else pitch_s:.1f}  "
+                #                    f"EAR={0.0 if ear_s is None else ear_s:.2f}  "
+                #                    f"gaze_off={0.0 if gaze_s is None else gaze_s:.2f}",
+                #             (10,60), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,255,255), 1)
 
-                # SCORE bar + ngưỡng
-                bar_x, bar_y, bar_w, bar_h = 10, 90, 220, 18
-                cv2.rectangle(frame, (bar_x, bar_y), (bar_x+bar_w, bar_y+bar_h), (80,80,80), 1)
-                fill_w = int(bar_w * max(0.0, min(1.0, score)))
-                cv2.rectangle(frame, (bar_x, bar_y), (bar_x+fill_w, bar_y+bar_h),
-                              (0,0,255) if score>=fsm.th_on else (0,200,0), -1)
-                x_on  = bar_x + int(bar_w * fsm.th_on)
-                x_off = bar_x + int(bar_w * fsm.th_off)
-                cv2.line(frame, (x_on, bar_y), (x_on, bar_y+bar_h), (0,0,255), 2)
-                cv2.line(frame, (x_off, bar_y), (x_off, bar_y+bar_h), (0,255,0), 2)
-                cv2.putText(frame, f"SCORE {score:.2f}", (bar_x, bar_y-5),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1)
+                # # SCORE bar + ngưỡng
+                # bar_x, bar_y, bar_w, bar_h = 10, 90, 220, 18
+                # cv2.rectangle(frame, (bar_x, bar_y), (bar_x+bar_w, bar_y+bar_h), (80,80,80), 1)
+                # fill_w = int(bar_w * max(0.0, min(1.0, score)))
+                # cv2.rectangle(frame, (bar_x, bar_y), (bar_x+fill_w, bar_y+bar_h),
+                #               (0,0,255) if score>=fsm.th_on else (0,200,0), -1)
+                # x_on  = bar_x + int(bar_w * fsm.th_on)
+                # x_off = bar_x + int(bar_w * fsm.th_off)
+                # cv2.line(frame, (x_on, bar_y), (x_on, bar_y+bar_h), (0,0,255), 2)
+                # cv2.line(frame, (x_off, bar_y), (x_off, bar_y+bar_h), (0,255,0), 2)
+                # cv2.putText(frame, f"SCORE {score:.2f}", (bar_x, bar_y-5),
+                #             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1)
 
-                # Vòng tròn dwell + border & countdown
-                center=(150, 150); radius=18
-                cv2.circle(frame, center, radius, (200,200,200), 2)
-                cv2.ellipse(frame, center, (radius, radius), -90, 0, progress*360, (0,255,255), 3)
-                cv2.putText(frame, "dwell", (center[0]-25, center[1]+40),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200,200,200), 1)
+                # # Vòng tròn dwell + border & countdown
+                # center=(150, 150); radius=18
+                # cv2.circle(frame, center, radius, (200,200,200), 2)
+                # cv2.ellipse(frame, center, (radius, radius), -90, 0, progress*360, (0,255,255), 3)
+                # cv2.putText(frame, "dwell", (center[0]-25, center[1]+40),
+                #             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200,200,200), 1)
 
                 # ứng viên chuyển?
                 candidate, target, need = False, None, None
@@ -421,7 +454,12 @@ def main():
                         )
 
                         # OPTIONAL: show debug state
-            status_box.text(f"FSM state: {fsm.state}")
+            # Cập nhật status với style
+            status_box.markdown(
+                f"<div style='text-align:center; font-size:28px; color:blue;'>FSM state: {state.upper()}</div>",
+                unsafe_allow_html=True
+            )
+            time.sleep(0.5)
 
             # Streamlit-controlled stop button
             # if st.button("Stop"):

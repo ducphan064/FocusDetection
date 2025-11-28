@@ -8,7 +8,7 @@ import platform
 LEFT_EYE  = [33,160,158,133,153,144]
 RIGHT_EYE = [263,387,385,362,380,373]
 
-EYE_DISPLAY = (720, 360)
+EYE_DISPLAY = (720, 260)
 MOUTH_DISPLAY = (600, 100)
 HEAD_DISPLAY = (360, 215)
 
@@ -49,11 +49,11 @@ MOUTH_BOTTOM_L   = 87    # môi dưới trái
 ### Vector đặc trưng khuôn mặc 3D "chuẩn" theo cộng đồng MediaPipe cung cấp
 MODEL_PTS = np.array([
     [0.0, 0.0, 0.0],      # nose tip
-    [0.0, -63.6, -12.5],  # chin
-    [-43.3, 32.7, -26.0], # left eye corner
-    [43.3, 32.7, -26.0],  # right eye corner
-    [-28.9, -28.9, -24.1],# left ear
-    [28.9, -28.9, -24.1], # right ear
+    [0.0, -63.6, 12.5],   # chin (Z = +12.5)
+    [-43.3, 32.7, 26.0],  # left eye corner (Z = +26.0)
+    [43.3, 32.7, 26.0],   # right eye corner (Z = +26.0)
+    [-28.9, -28.9, 24.1], # left ear (Z = +24.1)
+    [28.9, -28.9, 24.1],  # right ear (Z = +24.1)
 ], dtype=np.float32)
 
 # 2) TIỆN ÍCH HÌNH HỌC
@@ -125,14 +125,14 @@ def solve_head_pose(landmarks, w, h):
     cx, cy = w/2.0, h/2.0
     cam_mtx = np.array([[fx,0,cx],[0,fy,cy],[0,0,1]], dtype=np.float32)
     dist = np.zeros((4,1), dtype=np.float32)
-    okp, rvec, _ = cv2.solvePnP(MODEL_PTS, pts2d, cam_mtx, dist, flags=cv2.SOLVEPNP_ITERATIVE)
+    okp, rvec, tvec = cv2.solvePnP(MODEL_PTS, pts2d, cam_mtx, dist, flags=cv2.SOLVEPNP_ITERATIVE)
     if not okp: return None, None
     R, _ = cv2.Rodrigues(rvec)
     print('Shape of R:', R.shape)
     sy = math.sqrt(R[0,0]**2 + R[1,0]**2)
     pitch = math.degrees(math.atan2(-R[2,0], sy))
     yaw   = math.degrees(math.atan2(R[1,0], R[0,0]))#arctan2 cua cac diem trong ma tran xoay
-    return yaw, pitch
+    return yaw, pitch, rvec, tvec, cam_mtx, dist
 
 def get_eye_points(landmarks, idxs, w, h):
     return [(landmarks[i].x*w, landmarks[i].y*h) for i in idxs]
@@ -213,7 +213,7 @@ class FocusFSM:
             return self.state, 1.0
         return self.state, min(1.0, elapsed/need)
 
-def crop_region(frame, lms, indices, padding=10):
+def crop_region(frame, lms, indices, padding=10, returnCdn=False):
     h, w = frame.shape[:2]
     pts = [(int(lms[i].x*w), int(lms[i].y*h)) for i in indices]
 
@@ -224,7 +224,8 @@ def crop_region(frame, lms, indices, padding=10):
     y1 = max(0, min(ys) - padding)
     x2 = min(w, max(xs) + padding)
     y2 = min(h, max(ys) + padding)
-
+    if returnCdn==True:
+        return frame[y1:y2, x1:x2], (x1,y1,x2,y2)
     return frame[y1:y2, x1:x2]
 
 class YawnTracker:
