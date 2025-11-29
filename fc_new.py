@@ -91,6 +91,7 @@ def main():
             "<div style='text-align:center; font-size:28px; color:blue;'>Status: Ready</div>",
             unsafe_allow_html=True
         )
+        eq_box = st.empty()
 
 
     # ---- RIGHT SIDE (2 rows) ----
@@ -241,14 +242,14 @@ def main():
                 yaw_s, pitch_s, ear_s, gaze_s, mar_s = flt.update(yaw, pitch, ear_val, gaze_off, mar_val)
                 left_eye_crop = crop_region(frame, lms, LEFT_EYE)
                 right_eye_crop = crop_region(frame, lms, RIGHT_EYE)
-                face_crop= crop_region(frame, lms, FACE_OVAL, padding=200)
+                face_crop= crop_region(frame, lms, FACE_OVAL, padding=10)
                 mouth_crop = crop_region(frame, lms, MOUTH)
                 # print('Eye crop shape:', left_eye_crop.shape)
                 # print('face crop shape:', face_crop.shape)
                 # print('mouth crop shape:', mouth_crop.shape)
                 if right_eye_crop is not None and right_eye_crop.size != 0:
                     right_eye_crop = cv2.resize(right_eye_crop, EYE_DISPLAY)
-                    right_eye_box.image(right_eye_crop, channels="BGR", caption="Right Eye")
+                    right_eye_box.image(right_eye_crop, channels="BGR", caption="Eye - EAR")
                     right_eye_ear.latex(fr"""
                                         \mathrm{{Right EAR}} =
                                         \frac{{
@@ -278,7 +279,7 @@ def main():
                     right_eye_ear.write("Right eye out of frame")
                 if left_eye_crop is not None and left_eye_crop.size != 0:
                     left_eye_crop = cv2.resize(left_eye_crop, EYE_DISPLAY)
-                    left_eye_box.image(left_eye_crop, channels="BGR", caption="Left Eye")
+                    left_eye_box.image(left_eye_crop, channels="BGR", caption="Eye - Gaze Offset")
                     left_eye_ear.latex(fr"""
                                         \mathrm{{Left EAR}} =
                                         \frac{{
@@ -345,7 +346,8 @@ def main():
                                         = \mathrm{ear_val:.3f}
                                         """)
                 if face_crop is not None and face_crop.size != 0:
-                    head_box.image(face_crop, channels="BGR", caption="Face")
+                    face_crop = cv2.resize(face_crop, EYE_DISPLAY)
+                    head_box.image(face_crop, channels="BGR", caption="Head Pose - PnP")
                     pitch_eq.latex(fr"""
                                 \mathrm{{pitch}} =
                                 \arctan2\!\left(-R_{{2,0}},\, \sqrt{{R_{{0,0}}^2 + R_{{1,0}}^2}}\right) \cdot \frac{{180}}{{\pi}}
@@ -362,7 +364,7 @@ def main():
                     head_box.write("Face out of frame")
                 if mouth_crop is not None and mouth_crop.size != 0:
                     mouth_crop = cv2.resize(mouth_crop, EYE_DISPLAY)
-                    mouth_box.image(mouth_crop, channels="BGR", caption="Mouth")
+                    mouth_box.image(mouth_crop, channels="BGR", caption="Mouth - MAR")
                     mar_eq.latex(fr"""
                                 \mathrm{{MAR}} = 
                                 \frac{{
@@ -385,39 +387,9 @@ def main():
                 # Score + FSM
                 mar0 = yinfo['baseline']
                 # Sửa lệnh gọi hàm (cần 8 tham số)
-                score = compute_score(yaw_s, pitch_s, ear_s, mar_s, gaze_s, yaw0, pitch0, ear0, mar0)              
+                score, yaw_r, pit_r, blink_r, yawn_r, gaze_r  = compute_score(yaw_s, pitch_s, ear_s, mar_s, gaze_s, yaw0, pitch0, ear0, mar0)              
                 state_before = fsm.state
                 state, progress = fsm.update(score)
-
-                # ===== UI: trạng thái, số liệu
-                # cv2.putText(frame, f"STATE: {state.upper()}",
-                #             (10,30), cv2.FONT_HERSHEY_SIMPLEX, 0.9,
-                #             (0,255,0) if state=="focused" else (0,0,255), 2)
-                # cv2.putText(frame, f"yaw={0.0 if yaw_s is None else yaw_s:.1f}  "
-                #                    f"pitch={0.0 if pitch_s is None else pitch_s:.1f}  "
-                #                    f"EAR={0.0 if ear_s is None else ear_s:.2f}  "
-                #                    f"gaze_off={0.0 if gaze_s is None else gaze_s:.2f}",
-                #             (10,60), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,255,255), 1)
-
-                # # SCORE bar + ngưỡng
-                # bar_x, bar_y, bar_w, bar_h = 10, 90, 220, 18
-                # cv2.rectangle(frame, (bar_x, bar_y), (bar_x+bar_w, bar_y+bar_h), (80,80,80), 1)
-                # fill_w = int(bar_w * max(0.0, min(1.0, score)))
-                # cv2.rectangle(frame, (bar_x, bar_y), (bar_x+fill_w, bar_y+bar_h),
-                #               (0,0,255) if score>=fsm.th_on else (0,200,0), -1)
-                # x_on  = bar_x + int(bar_w * fsm.th_on)
-                # x_off = bar_x + int(bar_w * fsm.th_off)
-                # cv2.line(frame, (x_on, bar_y), (x_on, bar_y+bar_h), (0,0,255), 2)
-                # cv2.line(frame, (x_off, bar_y), (x_off, bar_y+bar_h), (0,255,0), 2)
-                # cv2.putText(frame, f"SCORE {score:.2f}", (bar_x, bar_y-5),
-                #             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1)
-
-                # # Vòng tròn dwell + border & countdown
-                # center=(150, 150); radius=18
-                # cv2.circle(frame, center, radius, (200,200,200), 2)
-                # cv2.ellipse(frame, center, (radius, radius), -90, 0, progress*360, (0,255,255), 3)
-                # cv2.putText(frame, "dwell", (center[0]-25, center[1]+40),
-                #             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200,200,200), 1)
 
                 # ứng viên chuyển?
                 candidate, target, need = False, None, None
@@ -456,6 +428,17 @@ def main():
                 f"<div style='text-align:center; font-size:28px; color:blue;'>FSM state: {state.upper()}</div>",
                 unsafe_allow_html=True
             )
+            eq_box.latex(fr"""
+                            \mathrm{{Yaw}} = {yaw_r:.3f} \\
+                            \mathrm{{Pitch}} = {pit_r:.3f} \\
+                            \mathrm{{BlinkScore}} = {blink_r:.3f} \\
+                            \mathrm{{YawnScore}} = {yawn_r:.3f} \\
+                            \mathrm{{GazeScore}} = {gaze_r:.3f} \\
+                            \mathrm{{FinalScore}} = {score:.3f}
+                            """)
+
+
+
             time.sleep(0.5)
 
             # Streamlit-controlled stop button

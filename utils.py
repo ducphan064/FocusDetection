@@ -8,7 +8,7 @@ import platform
 LEFT_EYE  = [33,160,158,133,153,144]
 RIGHT_EYE = [263,387,385,362,380,373]
 
-EYE_DISPLAY = (720, 260)
+EYE_DISPLAY = (720, 240)
 MOUTH_DISPLAY = (600, 100)
 HEAD_DISPLAY = (360, 215)
 
@@ -327,7 +327,7 @@ def compute_score(yaw, pitch, ear, mar, gaze_off, yaw0, pitch0, ear0, mar0):
     pit_score  = ramp(dpit, 12, 28) # Pitch > 28 độ là 1.0
     
     # 2. Chuẩn hóa EAR (Dựa trên ngưỡng tuyệt đối hoặc delta)
-    blink_score = ramp(max(0.0, (ear0 - (ear or ear0))), 0.06, 0.14) 
+    blink_score = ramp(max(0.0, (ear0 - (ear or ear0))), 0.2, 0.4) 
     # Sửa lại thành ngưỡng tuyệt đối cho EAR (ví dụ: EAR < 0.22 là buồn ngủ)
     #blink_score = ramp(max(0.0, (0.22 - (ear or 0))), 0.08, 0.18) # Giả sử ngưỡng EAR
 
@@ -340,11 +340,11 @@ def compute_score(yaw, pitch, ear, mar, gaze_off, yaw0, pitch0, ear0, mar0):
     gaze_score  = ramp(gaze_off or 0.0, 0.11, 0.22) 
     
     # 5. Tổng hợp Trọng số 
-    w_yaw, w_pit, w_ear, w_mar, w_gaze = 0.3, 0.3, 0.4, 0.7, 0.7
+    w_yaw, w_pit, w_ear, w_mar, w_gaze = 0.3, 0.3, 0.7, 0.4, 0.7
 
     score = (w_yaw*yaw_score + w_pit*pit_score + w_ear*blink_score + w_mar*yawn_score + w_gaze*gaze_score)
              
-    return min(1.5, score)
+    return min(1.5, score), yaw_score, pit_score, blink_score, yawn_score, gaze_score 
 def open_camera():
     system = platform.system()
 
