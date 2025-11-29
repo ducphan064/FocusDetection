@@ -88,10 +88,10 @@ def compute_gaze_offset(landmarks, w, h):
     # Chuẩn hoá độ lệch tròng mắt theo bề ngang mắt (0..~0.5)
     cL, wL = eye_center_and_width(landmarks, LEFT_EYE_CORNERS, w, h)
     irisL = iris_center(landmarks, LEFT_IRIS, w, h)
-    print("------------------------------")
-    print("Left eye center", cL)
-    print("Left eye width", wL)
-    print("Iris Center Left",irisL)
+    # print("------------------------------")
+    # print("Left eye center", cL)
+    # print("Left eye width", wL)
+    # print("Iris Center Left",irisL)
     offL = 0.0
     if irisL and wL > 1:
         vL = (irisL[0] - cL[0], irisL[1] - cL[1])
@@ -128,7 +128,7 @@ def solve_head_pose(landmarks, w, h):
     okp, rvec, tvec = cv2.solvePnP(MODEL_PTS, pts2d, cam_mtx, dist, flags=cv2.SOLVEPNP_ITERATIVE)
     if not okp: return None, None
     R, _ = cv2.Rodrigues(rvec)
-    print('Shape of R:', R.shape)
+    # print('Shape of R:', R.shape)
     sy = math.sqrt(R[0,0]**2 + R[1,0]**2)
     pitch = math.degrees(math.atan2(-R[2,0], sy))
     yaw   = math.degrees(math.atan2(R[1,0], R[0,0]))#arctan2 cua cac diem trong ma tran xoay
@@ -171,16 +171,18 @@ def mouth_aspect_ratio(landmarks, w, h):
 # 3) SMOOTHING & FSM
 class FeatureSmoother:
     def __init__(self, alpha=0.75):
-        self.yaw=self.pitch=self.ear=self.gaze=None
+        self.yaw=self.pitch=self.ear=self.gaze=self.mar=None
         self.a=alpha
     def ema(self, prev, new):
         return self.a*prev + (1-self.a)*new if prev is not None else new
-    def update(self, yaw, pitch, ear, gaze_off):
+    def update(self, yaw, pitch, ear, gaze_off, mar):
         if yaw   is not None: self.yaw   = self.ema(self.yaw, yaw)
         if pitch is not None: self.pitch = self.ema(self.pitch, pitch)
         if ear   is not None: self.ear   = self.ema(self.ear, ear)
         if gaze_off is not None: self.gaze = self.ema(self.gaze, gaze_off)
-        return self.yaw, self.pitch, self.ear, self.gaze
+        if mar is not None: self.mar = self.ema(self.mar, mar)
+
+        return self.yaw, self.pitch, self.ear, self.gaze, self.mar
 
 class FocusFSM:
     def __init__(self, th_on=0.88, th_off=0.55, dwell_on=1.2, dwell_off=0.8):
@@ -302,18 +304,46 @@ def ramp(x, start, end):
     if x>=end:   return 1.0
     return (x-start)/(end-start)
 #Giả sử 10 frame
-def compute_score(yaw, pitch, ear, gaze_off, yaw0, pitch0, ear0): ## hàm tính score tổng focus _ unfocus
+
+# def compute_score(yaw, pitch, ear, gaze_off, yaw0, pitch0, ear0): ## hàm tính score tổng focus _ unfocus
+#     dyaw = abs((yaw or 0) - yaw0)
+#     dpit = abs((pitch or 0) - pitch0)
+#     # Nhạy vừa phải (đổi để test dễ hơn/khó hơn)
+#     yaw_score  = ramp(dyaw, 15, 35) #góc quay ngang của đầu
+#     pit_score  = ramp(dpit, 12, 28) #góc quay dọc của đầu
+#     blink_score = ramp(max(0.0, (ear0 - (ear or ear0))), 0.06, 0.14) #chớp mắt
+#     gaze_score  = ramp(gaze_off or 0.0, 0.1, 0.22) #hướng mắt
+#     print("Blink score", blink_score)
+#     print('Gaze after ramp', gaze_score)
+#     w_yaw, w_pit, w_blink, w_gaze = 0.25, 0.25, 0.7, 0.7
+#     score = (w_yaw*yaw_score + w_pit*pit_score + w_blink*blink_score + w_gaze*gaze_score)
+#     return min(1.5, score)
+def compute_score(yaw, pitch, ear, mar, gaze_off, yaw0, pitch0, ear0, mar0):
+    
+    # 1. Tính toán Delta và chuẩn hóa Head Pose (Yaw/Pitch)
     dyaw = abs((yaw or 0) - yaw0)
     dpit = abs((pitch or 0) - pitch0)
-    # Nhạy vừa phải (đổi để test dễ hơn/khó hơn)
-    yaw_score  = ramp(dyaw, 15, 35) #góc quay ngang của đầu
-    pit_score  = ramp(dpit, 12, 28) #góc quay dọc của đầu
-    blink_score = ramp(max(0.0, (ear0 - (ear or ear0))), 0.06, 0.14) #chớp mắt
-    gaze_score  = ramp(gaze_off or 0.0, 0.1, 0.22) #hướng mắt
-    print("Blink score", blink_score)
-    print('Gaze after ramp', gaze_score)
-    w_yaw, w_pit, w_blink, w_gaze = 0.25, 0.25, 0.7, 0.7
-    score = (w_yaw*yaw_score + w_pit*pit_score + w_blink*blink_score + w_gaze*gaze_score)
+    yaw_score  = ramp(dyaw, 15, 35) # Yaw > 35 độ là 1.0
+    pit_score  = ramp(dpit, 12, 28) # Pitch > 28 độ là 1.0
+    
+    # 2. Chuẩn hóa EAR (Dựa trên ngưỡng tuyệt đối hoặc delta)
+    blink_score = ramp(max(0.0, (ear0 - (ear or ear0))), 0.06, 0.14) 
+    # Sửa lại thành ngưỡng tuyệt đối cho EAR (ví dụ: EAR < 0.22 là buồn ngủ)
+    #blink_score = ramp(max(0.0, (0.22 - (ear or 0))), 0.08, 0.18) # Giả sử ngưỡng EAR
+
+    # 3. Chuẩn hóa MAR (Yawn)
+    # Giả sử Ngáp nếu MAR tăng 2.5 lần so với baseline (mar0)
+    mar_ratio = (mar or mar0) / (mar0 or 1e-6) 
+    yawn_score  = ramp(mar_ratio, 2.0, 3.0) # Yawn nếu MAR > 3.0 * baseline
+
+    # 4. Chuẩn hóa Gaze Offset
+    gaze_score  = ramp(gaze_off or 0.0, 0.11, 0.22) 
+    
+    # 5. Tổng hợp Trọng số 
+    w_yaw, w_pit, w_ear, w_mar, w_gaze = 0.3, 0.3, 0.4, 0.7, 0.7
+
+    score = (w_yaw*yaw_score + w_pit*pit_score + w_ear*blink_score + w_mar*yawn_score + w_gaze*gaze_score)
+             
     return min(1.5, score)
 def open_camera():
     system = platform.system()

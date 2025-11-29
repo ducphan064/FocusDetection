@@ -8,7 +8,7 @@ import streamlit as st
 
 # 5) CALIBRATION (2s)
 def calibrate_neutral(cap, face, seconds=2.0, stframe=None):
-    ys, ps, ears = [], [], []
+    ys, ps, ears, mars = [], [], [], []
     t0 = time.time()
 
     while time.time() - t0 < seconds:
@@ -28,6 +28,7 @@ def calibrate_neutral(cap, face, seconds=2.0, stframe=None):
             leye = get_eye_points(lms, LEFT_EYE, w, h)
             reye = get_eye_points(lms, RIGHT_EYE, w, h)
             ear = 0.5*(eye_aspect_ratio(leye)[-1]+eye_aspect_ratio(reye)[-1]) if len(leye)==6 and len(reye)==6 else None
+            mar_val = mouth_aspect_ratio(lms, w, h)
 
             yaw, pitch,_,_,_,_ = solve_head_pose(lms, w, h)
             if yaw is not None:
@@ -35,13 +36,15 @@ def calibrate_neutral(cap, face, seconds=2.0, stframe=None):
                 ps.append(pitch)
             if ear is not None:
                 ears.append(ear)
+            if mar_val is not None:
+                mars.append(mar_val)
 
             cv2.putText(frame, "Calibrating... Keep looking straight",
                         (10,30), cv2.FONT_HERSHEY_SIMPLEX, 0.6,(0,255,255),2)
 
         # --- Render to Streamlit instead of OpenCV GUI ---
         if stframe is not None:
-            stframe.image(frame, channels="BGR", use_container_width=True)
+            stframe.image(frame, channels="BGR")
 
         # VERY IMPORTANT: stop Streamlit from freezing
         time.sleep(0.01)
@@ -49,7 +52,9 @@ def calibrate_neutral(cap, face, seconds=2.0, stframe=None):
     yaw0 = float(np.mean(ys)) if ys else 0.0
     pitch0 = float(np.mean(ps)) if ps else 0.0
     ear0 = float(np.mean(ears)) if ears else 0.28
-    return yaw0, pitch0, ear0
+    mar0 = float(np.mean(mars)) if mars else 0.02
+
+    return yaw0, pitch0, ear0, mar0
 
 def main():
     print("[DEBUG] Python:", sys.version)
@@ -65,14 +70,6 @@ def main():
         initial_sidebar_state="collapsed"
     )
     col_main, col_right = st.columns([2, 2])
-
-    # ---- LEFT SIDE (2 rows) ----
-    # with col_left:
-    #     #Main cong thuc weighted sum
-    #     focus_box = st.empty()
-    #     focus_box_equation = st.empty()
-    #     # left_bottom = st.empty()
-    #     # left_bottom_equation = st.empty()
 
     # ---- MAIN SCREEN (big video frame) ----
 
@@ -148,13 +145,13 @@ def main():
                           min_detection_confidence=0.5,
                           min_tracking_confidence=0.5) as model:
 
-        yaw0, pitch0, ear0 = calibrate_neutral(cap, model, seconds=2.0, stframe=stframe)
-        print(f"[CALIB] yaw0={yaw0:.2f}, pitch0={pitch0:.2f}, ear0={ear0:.3f}")
+        yaw0, pitch0, ear0, mar0_calib = calibrate_neutral(cap, model, seconds=2.0, stframe=stframe)
+        print(f"[CALIB] yaw0={yaw0:.2f}, pitch0={pitch0:.2f}, ear0={ear0:.3f}, mar0={mar0_calib:.3f}")
 
         #bổ sung ngày 3/11/25
         yawn = YawnTracker(ema_alpha=0.75, ratio_on=8.0, ratio_off=1.5,
                    dwell_on=0.8, dwell_off=0.25, cap_update=1.8)
-
+        yawn.baseline = mar0_calib
         
         last_state = fsm.state
         beep_path = "/System/Library/Sounds/Pop.aiff" if sys.platform=="darwin" else None
@@ -214,13 +211,13 @@ def main():
 
                 yaw, pitch, rvec, tvec, cam_mtx, dist = solve_head_pose(lms, w, h)
                 L, offL, R, offR, gaze_off = compute_gaze_offset(lms, w, h)
-                print("Gaze offset", gaze_off)
+                # print("Gaze offset", gaze_off)
 
 ######################## BỔ SUNG 3/11/25
 
                 # # === MAR (mouth) & yawn
                 d_v1, d_v2, d_v3, horizontal, mar_val = mouth_aspect_ratio(lms, w, h)
-                # yinfo = yawn.update(mar_val, tnow=time.time())
+                yinfo = yawn.update(mar_val, tnow=time.time())
 
                 # # UI: hiển thị MAR/baseline/ratio & trạng thái
                 # cv2.putText(frame, f"MAR={0.0 if mar_val is None else mar_val:.2f} "
@@ -241,14 +238,14 @@ def main():
                 #     cv2.rectangle(frame, (4,4), (w-4, h-4), (0,165,255), 6)  # cam
 ###################################
                 # Smoothing
-                yaw_s, pitch_s, ear_s, gaze_s = flt.update(yaw, pitch, ear_val, gaze_off)
+                yaw_s, pitch_s, ear_s, gaze_s, mar_s = flt.update(yaw, pitch, ear_val, gaze_off, mar_val)
                 left_eye_crop = crop_region(frame, lms, LEFT_EYE)
                 right_eye_crop = crop_region(frame, lms, RIGHT_EYE)
                 face_crop= crop_region(frame, lms, FACE_OVAL, padding=200)
                 mouth_crop = crop_region(frame, lms, MOUTH)
-                print('Eye crop shape:', left_eye_crop.shape)
-                print('face crop shape:', face_crop.shape)
-                print('mouth crop shape:', mouth_crop.shape)
+                # print('Eye crop shape:', left_eye_crop.shape)
+                # print('face crop shape:', face_crop.shape)
+                # print('mouth crop shape:', mouth_crop.shape)
                 if right_eye_crop is not None and right_eye_crop.size != 0:
                     right_eye_crop = cv2.resize(right_eye_crop, EYE_DISPLAY)
                     right_eye_box.image(right_eye_crop, channels="BGR", caption="Right Eye")
@@ -277,7 +274,6 @@ def main():
                                             \frac{{{R[0]:.3f}}}{{{R[1]:.3f}}}
                                             = {offR:.3f}
                                             """)
-
                 else:
                     right_eye_ear.write("Right eye out of frame")
                 if left_eye_crop is not None and left_eye_crop.size != 0:
@@ -387,7 +383,9 @@ def main():
                 else:
                     mouth_box.write("Mouth out of frame")
                 # Score + FSM
-                score = compute_score(yaw_s, pitch_s, ear_s, gaze_s, yaw0, pitch0, ear0)
+                mar0 = yinfo['baseline']
+                # Sửa lệnh gọi hàm (cần 8 tham số)
+                score = compute_score(yaw_s, pitch_s, ear_s, mar_s, gaze_s, yaw0, pitch0, ear0, mar0)              
                 state_before = fsm.state
                 state, progress = fsm.update(score)
 
@@ -450,7 +448,6 @@ def main():
             stframe.image(
                             frame,
                             channels="BGR",
-                            use_container_width=False
                         )
 
                         # OPTIONAL: show debug state
