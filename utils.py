@@ -125,7 +125,7 @@ def solve_head_pose(landmarks, w, h):
     cx, cy = w/2.0, h/2.0
     cam_mtx = np.array([[fx,0,cx],[0,fy,cy],[0,0,1]], dtype=np.float32)
     dist = np.zeros((4,1), dtype=np.float32)
-    okp, rvec, tvec = cv2.solvePnP(MODEL_PTS, pts2d, cam_mtx, dist, flags=cv2.SOLVEPNP_ITERATIVE)
+    okp, rvec, tvec = cv2.solvePnP(MODEL_PTS, pts2d, cam_mtx, dist, flags=cv2.SOLVEPNP_EPNP)
     if not okp: return None, None
     R, _ = cv2.Rodrigues(rvec)
     # print('Shape of R:', R.shape)
@@ -303,21 +303,7 @@ def ramp(x, start, end):
     if x<=start: return 0.0
     if x>=end:   return 1.0
     return (x-start)/(end-start)
-#Giả sử 10 frame
 
-# def compute_score(yaw, pitch, ear, gaze_off, yaw0, pitch0, ear0): ## hàm tính score tổng focus _ unfocus
-#     dyaw = abs((yaw or 0) - yaw0)
-#     dpit = abs((pitch or 0) - pitch0)
-#     # Nhạy vừa phải (đổi để test dễ hơn/khó hơn)
-#     yaw_score  = ramp(dyaw, 15, 35) #góc quay ngang của đầu
-#     pit_score  = ramp(dpit, 12, 28) #góc quay dọc của đầu
-#     blink_score = ramp(max(0.0, (ear0 - (ear or ear0))), 0.06, 0.14) #chớp mắt
-#     gaze_score  = ramp(gaze_off or 0.0, 0.1, 0.22) #hướng mắt
-#     print("Blink score", blink_score)
-#     print('Gaze after ramp', gaze_score)
-#     w_yaw, w_pit, w_blink, w_gaze = 0.25, 0.25, 0.7, 0.7
-#     score = (w_yaw*yaw_score + w_pit*pit_score + w_blink*blink_score + w_gaze*gaze_score)
-#     return min(1.5, score)
 def compute_score(yaw, pitch, ear, mar, gaze_off, yaw0, pitch0, ear0, mar0):
     
     # 1. Tính toán Delta và chuẩn hóa Head Pose (Yaw/Pitch)
@@ -327,7 +313,7 @@ def compute_score(yaw, pitch, ear, mar, gaze_off, yaw0, pitch0, ear0, mar0):
     pit_score  = ramp(dpit, 12, 28) # Pitch > 28 độ là 1.0
     
     # 2. Chuẩn hóa EAR (Dựa trên ngưỡng tuyệt đối hoặc delta)
-    blink_score = ramp(max(0.0, (ear0 - (ear or ear0))), 0.2, 0.4) 
+    blink_score = ramp(max(0.0, (ear0 - (ear or ear0))), 0.06, 0.12) 
     # Sửa lại thành ngưỡng tuyệt đối cho EAR (ví dụ: EAR < 0.22 là buồn ngủ)
     #blink_score = ramp(max(0.0, (0.22 - (ear or 0))), 0.08, 0.18) # Giả sử ngưỡng EAR
 
@@ -337,10 +323,10 @@ def compute_score(yaw, pitch, ear, mar, gaze_off, yaw0, pitch0, ear0, mar0):
     yawn_score  = ramp(mar_ratio, 2.0, 3.0) # Yawn nếu MAR > 3.0 * baseline
 
     # 4. Chuẩn hóa Gaze Offset
-    gaze_score  = ramp(gaze_off or 0.0, 0.11, 0.22) 
+    gaze_score  = ramp(gaze_off or 0.0, 0.11, 0.18) 
     
     # 5. Tổng hợp Trọng số 
-    w_yaw, w_pit, w_ear, w_mar, w_gaze = 0.3, 0.3, 0.7, 0.4, 0.7
+    w_yaw, w_pit, w_ear, w_mar, w_gaze = 0.5, 0.5, 0.75, 0.25, 0.75
 
     score = (w_yaw*yaw_score + w_pit*pit_score + w_ear*blink_score + w_mar*yawn_score + w_gaze*gaze_score)
              

@@ -119,21 +119,12 @@ def main():
    
     # st_calibration = st.empty()
     cap = open_camera()
-
-    
-    # if not cap.isOpened():
-    #     st.error("Camera open failed. Try index 1...")
-    #     cap = cv2.VideoCapture(1, cv2.CAP_AVFOUNDATION)
-    #     if not cap.isOpened():
-    #         print("[FATAL] No camera. Check macOS Camera permissions.")
-    #         return
-
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 960)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
     mp_face = mp.solutions.face_mesh
     fsm = FocusFSM(th_on=0.75, th_off=0.5, dwell_on=1.2, dwell_off=0.8)
-    flt = FeatureSmoother(alpha=0.75)
+    flt = FeatureSmoother(alpha=0.5)
 
     # === Panel & Hotkeys state ===
     # sens = {"th_on": fsm.th_on, "dwell_on": fsm.dwell_on}
@@ -153,13 +144,8 @@ def main():
         yawn = YawnTracker(ema_alpha=0.75, ratio_on=8.0, ratio_off=1.5,
                    dwell_on=0.8, dwell_off=0.25, cap_update=1.8)
         yawn.baseline = mar0_calib
-        
-        last_state = fsm.state
-        beep_path = "/System/Library/Sounds/Pop.aiff" if sys.platform=="darwin" else None
-
         while True:
             ok, frame = cap.read()
-            # frame = digital_zoom(frame)
             if not ok: break
             h, w = frame.shape[:2]
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -213,31 +199,10 @@ def main():
                 yaw, pitch, rvec, tvec, cam_mtx, dist = solve_head_pose(lms, w, h)
                 L, offL, R, offR, gaze_off = compute_gaze_offset(lms, w, h)
                 # print("Gaze offset", gaze_off)
-
-######################## BỔ SUNG 3/11/25
-
                 # # === MAR (mouth) & yawn
                 d_v1, d_v2, d_v3, horizontal, mar_val = mouth_aspect_ratio(lms, w, h)
                 yinfo = yawn.update(mar_val, tnow=time.time())
 
-                # # UI: hiển thị MAR/baseline/ratio & trạng thái
-                # cv2.putText(frame, f"MAR={0.0 if mar_val is None else mar_val:.2f} "
-                #                 f"MAR0={0.0 if yinfo['baseline'] is None else yinfo['baseline']:.2f} "
-                #                 f"r={yinfo['ratio']:.2f}  YAWN={yinfo['state'].upper()}",
-                #             (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,255,255), 1)
-
-                # # Vòng tròn tiến trình dwell của YAWN
-                # yc = (300, 150); yr = 18
-                # cv2.circle(frame, yc, yr, (200,200,200), 2)
-                # cv2.ellipse(frame, yc, (yr, yr), -90, 0, yinfo['progress']*360,
-                #             (0,165,255), 3)  # cam
-                # cv2.putText(frame, "yawn dwell", (yc[0]-45, yc[1]+40),
-                #             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200,200,200), 1)
-
-                # # Border flash cam khi đang (hoặc sắp) YAWN
-                # if yinfo['state'] == "yawn" or (yinfo['ratio'] >= yawn.r_on and yinfo['progress'] > 0):
-                #     cv2.rectangle(frame, (4,4), (w-4, h-4), (0,165,255), 6)  # cam
-###################################
                 # Smoothing
                 yaw_s, pitch_s, ear_s, gaze_s, mar_s = flt.update(yaw, pitch, ear_val, gaze_off, mar_val)
                 left_eye_crop = crop_region(frame, lms, LEFT_EYE)
@@ -343,7 +308,7 @@ def main():
                                         }}{{
                                         2
                                         }}
-                                        = \mathrm{ear_val:.3f}
+                                        = \mathrm{gaze_off:.3f}
                                         """)
                 if face_crop is not None and face_crop.size != 0:
                     face_crop = cv2.resize(face_crop, EYE_DISPLAY)
@@ -408,12 +373,6 @@ def main():
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0,255,255), 2)
                 else:
                     draw_border(frame, (0,255,0) if state=="focused" else (0,0,255), 6)
-
-                # Beep khi vừa chuyển
-                if fsm.state != state_before and beep_path and os.path.exists(beep_path):
-                    if fsm.state == "unfocused":
-                        os.system(f"afplay '{beep_path}' &")
-
             else:
                 cv2.putText(frame, "No face detected", (10,30),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,255,255), 2)
@@ -439,27 +398,6 @@ def main():
 
 
 
-            time.sleep(0.5)
-
-            # Streamlit-controlled stop button
-            # if st.button("Stop"):
-            #     break
-
-            # --- Panel & Hotkeys ---
-            # put_panel(frame, sens)
-            # key = cv2.waitKey(1) & 0xFF
-            # if key == 27:  # ESC
-            #     break
-            # elif key == ord(']'):
-            #     sens["th_on"] = min(0.99, sens["th_on"] + 0.02);  fsm.th_on = sens["th_on"]
-            # elif key == ord('['):
-            #     sens["th_on"] = max(0.50, sens["th_on"] - 0.02);  fsm.th_on = sens["th_on"]
-            # elif key == ord('='):  # tăng dwell_on (khó vào UNFOCUS)
-            #     sens["dwell_on"] = min(3.0, sens["dwell_on"] + 0.1);  fsm.dwell_on = sens["dwell_on"]
-            # elif key == ord('-'):  # giảm dwell_on (dễ vào UNFOCUS)
-            #     sens["dwell_on"] = max(0.3, sens["dwell_on"] - 0.1);  fsm.dwell_on = sens["dwell_on"]
-
-            # cv2.imshow("Focus Monitor", frame)
 
     cap.release()
     cv2.destroyAllWindows()
