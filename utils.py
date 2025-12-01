@@ -313,13 +313,10 @@ def compute_score(yaw, pitch, ear, mar, gaze_off, yaw0, pitch0, ear0, mar0):
     pit_score  = ramp(dpit, 12, 28) # Pitch > 28 độ là 1.0
     
     # 2. Chuẩn hóa EAR (Dựa trên ngưỡng tuyệt đối hoặc delta)
-    blink_score = ramp(max(0.0, (ear0 - (ear or ear0))), 0.06, 0.12) 
-    # Sửa lại thành ngưỡng tuyệt đối cho EAR (ví dụ: EAR < 0.22 là buồn ngủ)
-    #blink_score = ramp(max(0.0, (0.22 - (ear or 0))), 0.08, 0.18) # Giả sử ngưỡng EAR
+    blink_score = ramp(max(0.0, (ear0 - (ear or ear0))), 0.06, 0.12) #Đo sự giảm của EAR với Baseline --> giảm < 0.06 =>0, từ 0.06 - 0.12 => giảm theo ramp, 0.12 ->1
 
     # 3. Chuẩn hóa MAR (Yawn)
-    # Giả sử Ngáp nếu MAR tăng 2.5 lần so với baseline (mar0)
-    mar_ratio = (mar or mar0) / (mar0 or 1e-6) 
+    mar_ratio = (mar or mar0) / (mar0 or 1e-6) #Tỉ lệ của mức độ mở miêng
     yawn_score  = ramp(mar_ratio, 2.0, 3.0) # Yawn nếu MAR > 3.0 * baseline
 
     # 4. Chuẩn hóa Gaze Offset

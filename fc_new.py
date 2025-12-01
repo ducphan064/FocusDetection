@@ -137,7 +137,7 @@ def main():
                           min_detection_confidence=0.5,
                           min_tracking_confidence=0.5) as model:
 
-        yaw0, pitch0, ear0, mar0_calib = calibrate_neutral(cap, model, seconds=2.0, stframe=stframe)
+        yaw0, pitch0, ear0, mar0_calib = calibrate_neutral(cap, model, seconds=2.0, stframe=stframe) #Lay trang thai ban dau
         print(f"[CALIB] yaw0={yaw0:.2f}, pitch0={pitch0:.2f}, ear0={ear0:.3f}, mar0={mar0_calib:.3f}")
 
         #bổ sung ngày 3/11/25
@@ -154,7 +154,7 @@ def main():
             if res.multi_face_landmarks:
                 lms = res.multi_face_landmarks[0].landmark
                 lms_draw = res.multi_face_landmarks[0]
-            # DRAW FULL FACEMESH
+                # DRAW FULL FACEMESH
                 mp_drawing.draw_landmarks(
                     image=frame,
                     landmark_list=lms_draw,
@@ -163,7 +163,7 @@ def main():
                     connection_drawing_spec=mp_styles.get_default_face_mesh_tesselation_style()
                 )
 
-                # DRAW EYES + IRIS with nicer colors
+                # DRAW EYES + IRIS
                 mp_drawing.draw_landmarks(
                     image=frame,
                     landmark_list=lms_draw,
@@ -189,10 +189,10 @@ def main():
                 )
 
                 # EAR
-                leye = get_eye_points(lms, LEFT_EYE, w, h)
+                leye = get_eye_points(lms, LEFT_EYE, w, h) #LAy toa do theo camera thuc cua eye
                 reye = get_eye_points(lms, RIGHT_EYE, w, h)
 
-                d26_r, d35_r, d14_r, ear_right = eye_aspect_ratio(reye) if len(leye)==6 and len(reye)==6 else None
+                d26_r, d35_r, d14_r, ear_right = eye_aspect_ratio(reye) if len(leye)==6 and len(reye)==6 else None #Xet len de tranh bug
                 d26_l, d35_l, d14_l, ear_left = eye_aspect_ratio(leye) if len(leye)==6 and len(reye)==6 else None
                 ear_val = 0.5*(ear_left+ear_right) if len(leye)==6 and len(reye)==6 else None
 
