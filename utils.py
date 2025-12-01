@@ -57,15 +57,17 @@ MODEL_PTS = np.array([
 ], dtype=np.float32)
 
 # 2) TIỆN ÍCH HÌNH HỌC
+#2 diem a va b => SQRT((a1-b1)^2 + (a2-b2)^2)
 def dist2d(a, b):
     return float(np.linalg.norm(np.array(a) - np.array(b)))
 
 def eye_aspect_ratio(pts):  # pts: [(x,y)] * 6
     def d(i, j): return dist2d(pts[i], pts[j])
-    final = (d(1,5) + d(2,4)) / (2.0*d(0,3) + 1e-8)
     d26 = d(1,5)
     d35 = d(2,4)
     d14 = d(0,3)
+    final = (d26 + d35) / (2.0*d14 + 1e-8)
+    
     return d26, d35, d14, final
 
 def iris_center(landmarks, idxs, w, h):
